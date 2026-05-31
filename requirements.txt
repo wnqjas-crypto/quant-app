@@ -1,7 +1,7 @@
 streamlit
 pandas
 numpy
-FinanceDataReader
+git+https://github.com/FinanceData/FinanceDataReader.git
 plotly
 pyarrow
 supabase==2.15.0
