@@ -1,0 +1,7 @@
+streamlit
+pandas
+numpy
+FinanceDataReader
+plotly
+pyarrow
+supabase==2.15.0
