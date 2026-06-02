@@ -137,6 +137,12 @@ def load_kospi():
 
 @st.cache_data(ttl=3600)
 def get_name_dict():
+    import json
+    # 로컬 파일 우선 (클라우드 환경 대비)
+    local = os.path.join(BASE_DIR, 'db', 'ticker_names.json')
+    if os.path.exists(local):
+        with open(local, encoding='utf-8') as f:
+            return json.load(f)
     try:
         krx = fdr.StockListing('KRX')
         krx['Code'] = krx['Code'].astype(str).str.zfill(6)
