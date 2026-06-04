@@ -749,11 +749,15 @@ def load_live_positions():
     url = _sb_url()
     if url:
         try:
-            import httpx as _hx
-            r = _hx.get(f'{url}/rest/v1/live_positions',
-                        headers=_sb_headers(), params={'select': '*'}, timeout=10)
-            if r.is_success and r.json():
-                df = pd.DataFrame(r.json())
+            import urllib.request as _ur, json as _js
+            key = st.secrets.get('SUPABASE_KEY', '')
+            req = _ur.Request(f'{url}/rest/v1/live_positions?select=*')
+            req.add_header('apikey', key)
+            req.add_header('Authorization', f'Bearer {key}')
+            with _ur.urlopen(req, timeout=10) as resp:
+                data = _js.loads(resp.read().decode('utf-8'))
+            if data:
+                df = pd.DataFrame(data)
                 for c in _cols:
                     if c not in df.columns:
                         df[c] = None
@@ -787,13 +791,18 @@ def save_live_positions(df):
                     else:
                         rec[col] = str(val) if not isinstance(val, (int, float, str, bool)) else val
                 records.append(rec)
-            import httpx as _hx
-            hdrs = {**_sb_headers(), 'Prefer': 'resolution=merge-duplicates'}
-            r = _hx.post(f'{url}/rest/v1/live_positions',
-                         headers=hdrs, json=records, timeout=15)
-            if r.is_success:
-                return
-            st.toast(f'Supabase 오류: {r.text[:100]}', icon='⚠️')
+            import urllib.request as _ur, json as _js
+            key = st.secrets.get('SUPABASE_KEY', '')
+            body = _js.dumps(records, ensure_ascii=False).encode('utf-8')
+            req = _ur.Request(f'{url}/rest/v1/live_positions',
+                              data=body, method='POST')
+            req.add_header('apikey', key)
+            req.add_header('Authorization', f'Bearer {key}')
+            req.add_header('Content-Type', 'application/json')
+            req.add_header('Prefer', 'resolution=merge-duplicates')
+            with _ur.urlopen(req, timeout=15):
+                pass
+            return
         except Exception as e:
             st.toast(f'Supabase 오류: {e}', icon='⚠️')
     df.to_parquet(LIVE_DB_PATH, index=False)
