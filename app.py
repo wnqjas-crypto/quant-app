@@ -749,9 +749,10 @@ def load_live_positions():
     url = _sb_url()
     if url:
         try:
-            r = _req.get(f'{url}/rest/v1/live_positions',
-                         headers=_sb_headers(), params={'select': '*'}, timeout=10)
-            if r.ok and r.json():
+            import httpx as _hx
+            r = _hx.get(f'{url}/rest/v1/live_positions',
+                        headers=_sb_headers(), params={'select': '*'}, timeout=10)
+            if r.is_success and r.json():
                 df = pd.DataFrame(r.json())
                 for c in _cols:
                     if c not in df.columns:
@@ -786,13 +787,11 @@ def save_live_positions(df):
                     else:
                         rec[col] = str(val) if not isinstance(val, (int, float, str, bool)) else val
                 records.append(rec)
-            import json as _json
-            hdrs = {**_sb_headers(), 'Prefer': 'resolution=merge-duplicates',
-                    'Content-Type': 'application/json; charset=utf-8'}
-            body = _json.dumps(records, ensure_ascii=False).encode('utf-8')
-            r = _req.post(f'{url}/rest/v1/live_positions',
-                          headers=hdrs, data=body, timeout=15)
-            if r.ok:
+            import httpx as _hx
+            hdrs = {**_sb_headers(), 'Prefer': 'resolution=merge-duplicates'}
+            r = _hx.post(f'{url}/rest/v1/live_positions',
+                         headers=hdrs, json=records, timeout=15)
+            if r.is_success:
                 return
             st.toast(f'Supabase 오류: {r.text[:100]}', icon='⚠️')
         except Exception as e:

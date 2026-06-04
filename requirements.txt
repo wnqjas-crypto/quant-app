@@ -4,3 +4,4 @@ numpy
 git+https://github.com/FinanceData/FinanceDataReader.git
 plotly
 pyarrow
+httpx
