@@ -941,6 +941,15 @@ def render_tracking_tab(live_df, current_q, q_df, name_dict, bt_df=None):
                 })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+    if not live_df.empty:
+        csv_bytes = live_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button(
+            '📥 CSV 내보내기 (Supabase 업로드용)',
+            data=csv_bytes,
+            file_name=f'live_positions_{pd.Timestamp.today().strftime("%Y%m%d")}.csv',
+            mime='text/csv',
+        )
+
     closed = live_df[live_df['status'] == 'closed'].copy()
     if closed.empty:
         st.caption('아직 청산된 분기가 없습니다. 다음 리밸런싱 후 성과가 집계됩니다.')
