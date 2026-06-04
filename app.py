@@ -1,6 +1,5 @@
 import glob
 import os
-from supabase import create_client as _sb_create
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -734,27 +733,26 @@ def render_strategy_tab(strat: str, df: pd.DataFrame, name_dict: dict,
 def quarter_str(qe):
     return f"{qe.year}Q{(qe.month - 1) // 3 + 1}"
 
-@st.cache_resource
-def _get_supabase():
-    try:
-        url = st.secrets.get('SUPABASE_URL', '')
-        key = st.secrets.get('SUPABASE_KEY', '')
-        if url and key:
-            return _sb_create(url, key)
-    except Exception:
-        pass
-    return None
+def _sb_headers():
+    key = st.secrets.get('SUPABASE_KEY', '')
+    return {'apikey': key, 'Authorization': f'Bearer {key}',
+            'Content-Type': 'application/json'}
+
+def _sb_url():
+    return st.secrets.get('SUPABASE_URL', '')
 
 def load_live_positions():
+    import requests as _req
     _cols = ['quarter', 'snapshot_date', 'strategy', 'ticker',
              'name', 'sector', 'entry_price', 'exit_price', 'exit_date', 'status',
              'last_price', 'last_price_date']
-    sb = _get_supabase()
-    if sb:
+    url = _sb_url()
+    if url:
         try:
-            resp = sb.table('live_positions').select('*').execute()
-            if resp.data:
-                df = pd.DataFrame(resp.data)
+            r = _req.get(f'{url}/rest/v1/live_positions',
+                         headers=_sb_headers(), params={'select': '*'}, timeout=10)
+            if r.ok and r.json():
+                df = pd.DataFrame(r.json())
                 for c in _cols:
                     if c not in df.columns:
                         df[c] = None
@@ -770,31 +768,32 @@ def load_live_positions():
     return pd.DataFrame(columns=_cols)
 
 def save_live_positions(df):
-    sb = _get_supabase()
-    if sb and not df.empty:
+    import requests as _req
+    url = _sb_url()
+    if url and not df.empty:
         try:
-            skip = {'id'}
             records = []
             for _, row in df.iterrows():
                 rec = {}
                 for col in df.columns:
-                    if col in skip:
+                    if col == 'id':
                         continue
                     val = row[col]
-                    if val is None:
-                        rec[col] = None
-                    elif isinstance(val, float) and pd.isna(val):
+                    if val is None or (isinstance(val, float) and pd.isna(val)):
                         rec[col] = None
                     elif hasattr(val, 'item'):
                         rec[col] = val.item()
                     else:
                         rec[col] = str(val) if not isinstance(val, (int, float, str, bool)) else val
                 records.append(rec)
-            sb.table('live_positions').upsert(
-                records, on_conflict='quarter,strategy,ticker').execute()
-            return
+            hdrs = {**_sb_headers(), 'Prefer': 'resolution=merge-duplicates'}
+            r = _req.post(f'{url}/rest/v1/live_positions',
+                          headers=hdrs, json=records, timeout=15)
+            if r.ok:
+                return
+            st.toast(f'Supabase 오류: {r.text[:100]}', icon='⚠️')
         except Exception as e:
-            st.toast(f'Supabase 저장 오류: {e}', icon='⚠️')
+            st.toast(f'Supabase 오류: {e}', icon='⚠️')
     df.to_parquet(LIVE_DB_PATH, index=False)
 
 def fetch_prices_now(tickers, progress_bar=None):
