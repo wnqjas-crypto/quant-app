@@ -786,9 +786,12 @@ def save_live_positions(df):
                     else:
                         rec[col] = str(val) if not isinstance(val, (int, float, str, bool)) else val
                 records.append(rec)
-            hdrs = {**_sb_headers(), 'Prefer': 'resolution=merge-duplicates'}
+            import json as _json
+            hdrs = {**_sb_headers(), 'Prefer': 'resolution=merge-duplicates',
+                    'Content-Type': 'application/json; charset=utf-8'}
+            body = _json.dumps(records, ensure_ascii=False).encode('utf-8')
             r = _req.post(f'{url}/rest/v1/live_positions',
-                          headers=hdrs, json=records, timeout=15)
+                          headers=hdrs, data=body, timeout=15)
             if r.ok:
                 return
             st.toast(f'Supabase 오류: {r.text[:100]}', icon='⚠️')
