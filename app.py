@@ -822,6 +822,49 @@ def fetch_prices_now(tickers, progress_bar=None):
             progress_bar.progress((i + 1) / max(len(tickers), 1))
     return out
 
+@st.cache_data(ttl=3600)
+def get_stock_price(ticker: str) -> pd.DataFrame:
+    try:
+        start = (pd.Timestamp.today() - pd.Timedelta(days=365)).strftime('%Y-%m-%d')
+        df = fdr.DataReader(ticker, start)
+        if df.empty:
+            return pd.DataFrame()
+        df.index = pd.to_datetime(df.index)
+        return df[['Close']].dropna()
+    except Exception:
+        return pd.DataFrame()
+
+def make_stock_chart(ticker: str, name: str) -> go.Figure:
+    df = get_stock_price(ticker)
+    fig = go.Figure()
+    if df.empty:
+        fig.add_annotation(text='주가 데이터 없음', xref='paper', yref='paper',
+                           x=0.5, y=0.5, showarrow=False)
+    else:
+        mn, mx = df['Close'].min(), df['Close'].max()
+        first, last = df['Close'].iloc[0], df['Close'].iloc[-1]
+        color = '#D32F2F' if last >= first else '#1565C0'
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['Close'], name=name,
+            line=dict(color=color, width=2), fill='tozeroy',
+            fillcolor=color.replace(')', ',0.08)').replace('rgb', 'rgba') if 'rgb' in color
+                       else ('rgba(211,47,47,0.08)' if color == '#D32F2F' else 'rgba(21,101,192,0.08)'),
+        ))
+        chg = (last / first - 1) * 100
+        fig.update_layout(
+            title=dict(text=f'{name}  <span style="font-size:13px;color:{color}">{last:,.0f}원  {chg:+.1f}%</span>',
+                       font=dict(size=14)),
+        )
+    fig.update_layout(
+        height=265, margin=dict(l=0, r=0, t=38, b=0),
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(248,249,250,0.8)',
+        xaxis=dict(showgrid=False, tickformat='%m/%d'),
+        yaxis=dict(showgrid=True, gridcolor='rgba(0,0,0,0.07)',
+                   tickformat=',.0f', side='right'),
+        showlegend=False, hovermode='x unified',
+    )
+    return fig
+
 def snapshot_quarter(live_df, q_df, current_q, name_dict):
     if current_q in live_df['quarter'].values:
         return live_df
@@ -1187,9 +1230,8 @@ with search_tab:
 
                 col_radar, col_bars = st.columns([1, 1])
                 with col_radar:
-                    st.markdown("**팩터 레이더**")
-                    st.plotly_chart(radar_chart(row, stock_name),
-                                   use_container_width=True, key="search_radar")
+                    st.plotly_chart(make_stock_chart(matched_ticker, stock_name),
+                                   use_container_width=True, key="search_price")
 
                 with col_bars:
                     st.markdown("**팩터 점수 상세**")
