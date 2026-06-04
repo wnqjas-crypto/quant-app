@@ -684,8 +684,8 @@ def render_strategy_tab(strat: str, df: pd.DataFrame, name_dict: dict,
         ticker     = row['ticker']
 
         st.markdown(f"#### {stock_name} `{ticker}`")
-        st.plotly_chart(radar_chart(row, stock_name), use_container_width=True,
-                        key=f"radar_{strat}_{sel[0]}")
+        st.plotly_chart(make_stock_chart(ticker, stock_name), use_container_width=True,
+                        key=f"price_{strat}_{sel[0]}")
 
         for col, label in FACTOR_LABELS.items():
             score = row[col]
