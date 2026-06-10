@@ -693,24 +693,22 @@ def render_strategy_tab(strat: str, df: pd.DataFrame, name_dict: dict,
     col_tbl, col_detail = st.columns([3, 2])
 
     with col_tbl:
+        _factor_kr = [FACTOR_LABELS[c] for c in FACTOR_COLS]
         if prev_tickers:
             top['구분'] = top['ticker'].apply(lambda t: '🔄' if t in prev_tickers else '🆕')
             disp = top[['구분', '종목명', 'ticker', 'sector', strat] + FACTOR_COLS].copy()
-            disp.columns = ['구분', '종목명', '티커', '섹터', '종합점수',
-                            '성장', '가치', '퀄리티', '수익성', '모멘텀', '저변동성']
+            disp.columns = ['구분', '종목명', '티커', '섹터', '종합점수'] + _factor_kr
         else:
             disp = top[['종목명', 'ticker', 'sector', strat] + FACTOR_COLS].copy()
-            disp.columns = ['종목명', '티커', '섹터', '종합점수',
-                            '성장', '가치', '퀄리티', '수익성', '모멘텀', '저변동성']
+            disp.columns = ['종목명', '티커', '섹터', '종합점수'] + _factor_kr
 
         disp = disp.reset_index(drop=True)
         disp.index = [f'#{i+1}' for i in range(len(disp))]
-        score_cols = ['성장', '가치', '퀄리티', '수익성', '모멘텀', '저변동성']
+        score_cols = _factor_kr
         styled = (
             disp.style
             .map(score_color, subset=score_cols)
-            .format({'종합점수': '{:.1f}', '성장': '{:.0f}', '가치': '{:.0f}',
-                     '퀄리티': '{:.0f}', '수익성': '{:.0f}', '모멘텀': '{:.0f}', '저변동성': '{:.0f}'})
+            .format({c: '{:.0f}' for c in _factor_kr} | {'종합점수': '{:.1f}'})
         )
         event = st.dataframe(
             styled, use_container_width=True, height=530,
