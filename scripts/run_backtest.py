@@ -31,6 +31,7 @@ STRATEGY_TOP_N = {
     '저평가형':   20,
     '모멘텀형':   15,
     '국면대응형': 20,
+    '촉매형':     20,
 }
 
 # 버퍼 존: 포트폴리오에 이미 있는 종목은 TOP_N + BUFFER 밖으로 밀려야 교체
@@ -41,6 +42,7 @@ STRATEGY_BUFFER = {
     '저평가형':   10,  # Top 30 밖이어야 퇴출 (장투 성격)
     '모멘텀형':   3,   # Top 18 밖이어야 퇴출 (모멘텀은 빠르게 교체)
     '국면대응형': 5,   # Top 25 밖이어야 퇴출
+    '촉매형':     3,   # Top 23 밖이어야 퇴출 (촉매 신호는 빠르게 교체)
 }
 MIN_TRADING_VALUE = 500_000_000  # 일평균 거래대금 5억원 (최근 20거래일 기준)
 # 시총 필터는 팩터 빌더(import pandas as pd.py)에서 적용됨 — 1000억 미만 제외
@@ -123,6 +125,8 @@ BALANCED_WEIGHTS = {
     'profitability_score':0.15,
     'momentum_score':     0.15,
     'lowvol_score':       0.10,
+    'garp_score':         0.00,
+    'catalyst_score':     0.00,
 }
 
 # -------------------------------------
@@ -136,6 +140,8 @@ VALUE_WEIGHTS = {
     'profitability_score':0.25,
     'momentum_score':     0.00,
     'lowvol_score':       0.10,
+    'garp_score':         0.00,
+    'catalyst_score':     0.00,
 }
 
 # -------------------------------------
@@ -149,6 +155,8 @@ MOMENTUM_WEIGHTS = {
     'profitability_score':0.10,
     'momentum_score':     0.45,
     'lowvol_score':       0.10,
+    'garp_score':         0.00,
+    'catalyst_score':     0.00,
 }
 
 # -------------------------------------
@@ -161,6 +169,8 @@ BULL_WEIGHTS = {
     'profitability_score':0.15,
     'momentum_score':     0.30,
     'lowvol_score':       0.10,
+    'garp_score':         0.00,
+    'catalyst_score':     0.00,
 }
 
 # -------------------------------------
@@ -174,6 +184,8 @@ SIDEWAYS_WEIGHTS = {
     'profitability_score':0.15,
     'momentum_score':     0.15,
     'lowvol_score':       0.10,
+    'garp_score':         0.00,
+    'catalyst_score':     0.00,
 }
 
 # -------------------------------------
@@ -186,6 +198,24 @@ BEAR_WEIGHTS = {
     'profitability_score':0.20,
     'momentum_score':     0.00,
     'lowvol_score':       0.10,
+    'garp_score':         0.00,
+    'catalyst_score':     0.00,
+}
+
+# -------------------------------------
+# 촉매형
+# GARP 이익가속 + 어닝서프라이즈·마진변곡 이벤트 드리븐
+# 국면 무관: 실적 촉매는 강세·약세 모두에서 기관 매수 유발
+# -------------------------------------
+CATALYST_WEIGHTS = {
+    'growth_score':       0.05,
+    'value_score':        0.05,
+    'quality_score':      0.05,
+    'profitability_score':0.05,
+    'momentum_score':     0.15,
+    'lowvol_score':       0.05,
+    'garp_score':         0.30,
+    'catalyst_score':     0.30,
 }
 
 # =========================================================
@@ -404,14 +434,16 @@ for i in range(len(QUARTERS) - 1):
     # 전략별 점수 계산 (numpy 벡터 연산 — apply 대비 수십 배 빠름)
     # ---------------------------------------------
     factor_cols = ['growth_score', 'value_score', 'quality_score',
-                   'profitability_score', 'momentum_score', 'lowvol_score']
-    factor_matrix = q_factor[factor_cols].fillna(50).values  # shape: (n_stocks, 6)
+                   'profitability_score', 'momentum_score', 'lowvol_score',
+                   'garp_score', 'catalyst_score']
+    factor_matrix = q_factor[factor_cols].fillna(50).values  # shape: (n_stocks, 8)
 
     for strat_name, weights in [
         ('밸런스형',   BALANCED_WEIGHTS),
         ('저평가형',   VALUE_WEIGHTS),
         ('모멘텀형',   MOMENTUM_WEIGHTS),
         ('국면대응형', regime_weights),
+        ('촉매형',     CATALYST_WEIGHTS),
     ]:
         w = np.array([weights[c] for c in factor_cols])
         q_factor[strat_name] = np.round(factor_matrix @ w, 2)
@@ -419,7 +451,7 @@ for i in range(len(QUARTERS) - 1):
     # 섹터 중립화 제거: 원점수 그대로 사용
     # 포트폴리오 선택 단계에서 섹터 캡(MAX_PER_SECTOR) 적용
     # 모멘텀형은 캡 없음 — 섹터 집중이 알파 소스
-    for strat_name in ['밸런스형', '저평가형', '모멘텀형', '국면대응형']:
+    for strat_name in ['밸런스형', '저평가형', '모멘텀형', '국면대응형', '촉매형']:
         q_factor[f'{strat_name}_sn'] = q_factor[strat_name]
 
     # ---------------------------------------------
@@ -448,7 +480,7 @@ for i in range(len(QUARTERS) - 1):
     # =====================================================
     # 전략별 백테스트
     # =====================================================
-    for strategy in ['밸런스형', '저평가형', '모멘텀형', '국면대응형']:
+    for strategy in ['밸런스형', '저평가형', '모멘텀형', '국면대응형', '촉매형']:
 
         top_n  = STRATEGY_TOP_N[strategy]
         sn_col = f'{strategy}_sn'
@@ -537,7 +569,8 @@ strategies = [
     '밸런스형',
     '저평가형',
     '모멘텀형',
-    '국면대응형'
+    '국면대응형',
+    '촉매형',
 ]
 
 for strategy in strategies:
@@ -656,6 +689,8 @@ COLUMN_KR = {
     '모멘텀형_winrate':  '모멘텀형_승률(%)',
     '국면대응형_return': '국면대응형_수익률(%)',
     '국면대응형_winrate':'국면대응형_승률(%)',
+    '촉매형_return':     '촉매형_수익률(%)',
+    '촉매형_winrate':    '촉매형_승률(%)',
 }
 
 detail_df = result_df.copy()
@@ -674,7 +709,7 @@ detail_df.to_csv(detail_path, index=False, encoding='utf-8-sig')
 # 10-2. 국면별 요약: 강세/횡보/약세 × 전략별 성과
 # ----------------------------------------------------------
 regime_order    = ['강세장', '횡보장', '약세장']
-strategy_labels = ['밸런스형', '저평가형', '모멘텀형', '국면대응형']
+strategy_labels = ['밸런스형', '저평가형', '모멘텀형', '국면대응형', '촉매형']
 
 summary_rows = []
 

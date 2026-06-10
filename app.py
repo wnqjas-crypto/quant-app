@@ -16,19 +16,22 @@ LIVE_DB_PATH   = os.path.join(BASE_DIR, 'db', 'live_positions.parquet')
 # ──────────────────────────────────────────
 # 전략 설정
 # ──────────────────────────────────────────
-STRATEGY_TOP_N = {'밸런스형': 20, '저평가형': 20, '모멘텀형': 15, '국면대응형': 20}
+STRATEGY_TOP_N = {'밸런스형': 20, '저평가형': 20, '모멘텀형': 15, '국면대응형': 20, '촉매형': 20}
 MAX_PER_SECTOR = 4  # 섭터별 최대 편입 종목 수 (모멘텀형 제외)
 
 FACTOR_COLS   = ['growth_score', 'value_score', 'quality_score',
-                 'profitability_score', 'momentum_score', 'lowvol_score']
+                 'profitability_score', 'momentum_score', 'lowvol_score',
+                 'garp_score', 'catalyst_score']
 FACTOR_LABELS = {
     'growth_score': '성장', 'value_score': '가치', 'quality_score': '퀄리티',
     'profitability_score': '수익성', 'momentum_score': '모멘텀', 'lowvol_score': '저변동성',
+    'garp_score': 'GARP', 'catalyst_score': '촉매',
 }
 _SHORT_DESC = {
     'growth_score': '매출·영업이익·순이익 YoY', 'value_score': 'PER·POR·ROE 저평가',
     'quality_score': 'ROE·부채비율·흑자여부', 'profitability_score': 'ROA·영업이익률(OPM)',
     'momentum_score': '6개월 수익률·52주 최고가', 'lowvol_score': '연간 변동성',
+    'garp_score': '이익가속·PEG·ROE 종합', 'catalyst_score': '어닝서프라이즈·마진변곡·턴어라운드',
 }
 FACTOR_DESC = {
     'growth_score': (
@@ -70,20 +73,46 @@ FACTOR_DESC = {
         "📌 100점 = 이번 분기 가장 안정적인 종목\n"
         "📌 약세장 방어 역할"
     ),
+    'garp_score': (
+        "**GARP** — 이익 가속 + 합리적 밸류 종합 점수\n\n"
+        "- 최근 4분기 영업이익 연속 흑자 (+1)\n"
+        "- 이익 가속: 현재 YoY > 직전분기 YoY (+1)\n"
+        "- 매출 YoY 성장 (+1)\n"
+        "- PEG ≤ 1.5 (+1), PEG ≤ 1.0 보너스 (+1)\n"
+        "- ROE 대리: 4Q 순이익 합계 양수 (+1)\n\n"
+        "📌 6/6 기준 100점 → 0점 (선형 정규화)"
+    ),
+    'catalyst_score': (
+        "**촉매** — 단기 재평가를 유발하는 이벤트 드리븐 신호\n\n"
+        "- 어닝 서프라이즈: 현재분기 영업이익 > 직전 4분기 평균 +30% (+1)\n"
+        "- 마진 변곡점: OPM QoQ·YoY 동시 개선 (+1)\n"
+        "- 턴어라운드: 직전분기 적자 → 현재 흑자 (+1)\n\n"
+        "📌 국면 무관 — 실적 촉매는 기관 강제 매수 유발\n"
+        "📌 3/3 기준 100점 → 0점"
+    ),
 }
 
 BALANCED_WEIGHTS = {'growth_score': 0.20, 'value_score': 0.20, 'quality_score': 0.20,
-                    'profitability_score': 0.15, 'momentum_score': 0.15, 'lowvol_score': 0.10}
+                    'profitability_score': 0.15, 'momentum_score': 0.15, 'lowvol_score': 0.10,
+                    'garp_score': 0.00, 'catalyst_score': 0.00}
 VALUE_WEIGHTS    = {'growth_score': 0.10, 'value_score': 0.35, 'quality_score': 0.20,
-                    'profitability_score': 0.25, 'momentum_score': 0.00, 'lowvol_score': 0.10}
+                    'profitability_score': 0.25, 'momentum_score': 0.00, 'lowvol_score': 0.10,
+                    'garp_score': 0.00, 'catalyst_score': 0.00}
 MOMENTUM_WEIGHTS = {'growth_score': 0.25, 'value_score': 0.00, 'quality_score': 0.10,
-                    'profitability_score': 0.10, 'momentum_score': 0.45, 'lowvol_score': 0.10}
+                    'profitability_score': 0.10, 'momentum_score': 0.45, 'lowvol_score': 0.10,
+                    'garp_score': 0.00, 'catalyst_score': 0.00}
 BULL_WEIGHTS     = {'growth_score': 0.25, 'value_score': 0.05, 'quality_score': 0.15,
-                    'profitability_score': 0.15, 'momentum_score': 0.30, 'lowvol_score': 0.10}
+                    'profitability_score': 0.15, 'momentum_score': 0.30, 'lowvol_score': 0.10,
+                    'garp_score': 0.00, 'catalyst_score': 0.00}
 SIDEWAYS_WEIGHTS = {'growth_score': 0.15, 'value_score': 0.20, 'quality_score': 0.25,
-                    'profitability_score': 0.15, 'momentum_score': 0.15, 'lowvol_score': 0.10}
+                    'profitability_score': 0.15, 'momentum_score': 0.15, 'lowvol_score': 0.10,
+                    'garp_score': 0.00, 'catalyst_score': 0.00}
 BEAR_WEIGHTS     = {'growth_score': 0.05, 'value_score': 0.40, 'quality_score': 0.25,
-                    'profitability_score': 0.20, 'momentum_score': 0.00, 'lowvol_score': 0.10}
+                    'profitability_score': 0.20, 'momentum_score': 0.00, 'lowvol_score': 0.10,
+                    'garp_score': 0.00, 'catalyst_score': 0.00}
+CATALYST_WEIGHTS = {'growth_score': 0.05, 'value_score': 0.05, 'quality_score': 0.05,
+                    'profitability_score': 0.05, 'momentum_score': 0.15, 'lowvol_score': 0.05,
+                    'garp_score': 0.30, 'catalyst_score': 0.30}
 
 REGIME_WEIGHTS = {'bull': BULL_WEIGHTS, 'sideways': SIDEWAYS_WEIGHTS, 'bear': BEAR_WEIGHTS}
 REGIME_KR      = {'bull': '강세장', 'sideways': '횡보장', 'bear': '약세장'}
@@ -105,9 +134,9 @@ SECTOR_BENCHMARKS = {
 REGIME_ADVICE = {
     'bull':     {'추천': ['모멘텀형', '국면대응형'], '설명': '상승 추세 강함 — 모멘텀·성장 팩터 집중 활용',
                  'color': '#E8F5E9', 'border': '#2E7D32'},
-    'sideways': {'추천': ['밸런스형', '저평가형'],   '설명': '방향성 불명확 — 균형 분산·안전마진이 유리',
+    'sideways': {'추천': ['촉매형', '밸런스형'],     '설명': '방향성 불명확 — 실적 촉매·균형 분산이 유리',
                  'color': '#FFF3E0', 'border': '#E65100'},
-    'bear':     {'추천': ['저평가형', '국면대응형'], '설명': '하락 국면 — 가치 방어·방어적 가중치가 유리',
+    'bear':     {'추천': ['촉매형', '저평가형'],     '설명': '하락 국면 — 어닝 서프라이즈 기업은 역방향 매수 유발',
                  'color': '#FFEBEE', 'border': '#B71C1C'},
 }
 
@@ -280,12 +309,18 @@ def select_with_sector_cap(df: pd.DataFrame, score_col: str,
 
 def compute_scores(df: pd.DataFrame, regime: str) -> pd.DataFrame:
     df = df.copy()
-    matrix = df[FACTOR_COLS].fillna(50).values
+    # 새 팩터가 DB에 없으면 중립값 50 삽입 (factor_db 재빌드 전 과도기 대응)
+    for col in ['garp_score', 'catalyst_score']:
+        if col not in df.columns:
+            df[col] = 50.0
+    avail_cols = [c for c in FACTOR_COLS if c in df.columns]
+    matrix = df[avail_cols].fillna(50).values
     for name, weights in [('밸런스형', BALANCED_WEIGHTS), ('저평가형', VALUE_WEIGHTS),
-                          ('모멘텀형', MOMENTUM_WEIGHTS), ('국면대응형', REGIME_WEIGHTS[regime])]:
-        w = np.array([weights[c] for c in FACTOR_COLS])
+                          ('모멘텀형', MOMENTUM_WEIGHTS), ('국면대응형', REGIME_WEIGHTS[regime]),
+                          ('촉매형', CATALYST_WEIGHTS)]:
+        w = np.array([weights[c] for c in avail_cols])
         df[name] = np.round(matrix @ w, 2)
-    for name in ['밸런스형', '저평가형', '모멘텀형', '국면대응형']:
+    for name in ['밸런스형', '저평가형', '모멘텀형', '국면대응형', '촉매형']:
         df[f'{name}_sn'] = df[name]
     return df
 
@@ -392,6 +427,16 @@ def generate_reason(row: pd.Series) -> str:
         stab = '매우 안정' if vol < 20 else ('안정' if vol < 30 else ('보통' if vol < 45 else '높은 변동성'))
         lines.append(f'{icon(row["lowvol_score"])} **저변동성 {row["lowvol_score"]:.0f}점** — 연간 변동성 {vol:.1f}% ({stab})')
 
+    # GARP
+    gs = row.get('garp_score') if 'garp_score' in row.index else None
+    if gs is not None and not (isinstance(gs, float) and np.isnan(gs)) and gs != 50:
+        lines.append(f'{icon(gs)} **GARP {gs:.0f}점** — 이익가속·PEG·ROE 종합 (50점=데이터부족)')
+
+    # 촉매
+    cs = row.get('catalyst_score') if 'catalyst_score' in row.index else None
+    if cs is not None and not (isinstance(cs, float) and np.isnan(cs)) and cs != 50:
+        lines.append(f'{icon(cs)} **촉매 {cs:.0f}점** — 어닝서프라이즈·마진변곡·턴어라운드')
+
     return '\n\n'.join(lines) if lines else '_데이터 없음_'
 
 # ──────────────────────────────────────────
@@ -400,12 +445,15 @@ def generate_reason(row: pd.Series) -> str:
 def history_chart(hist: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
     colors = {'성장': '#FF6B6B', '가치': '#4ECDC4', '퀄리티': '#45B7D1',
-              '수익성': '#96CEB4', '모멘텀': '#FFEAA7', '저변동성': '#DDA0DD'}
+              '수익성': '#96CEB4', '모멘텀': '#FFEAA7', '저변동성': '#DDA0DD',
+              'GARP': '#FF9800', '촉매': '#E91E63'}
     col_map = dict(zip(FACTOR_COLS, colors.keys()))
     for col, label in FACTOR_LABELS.items():
+        if col not in hist.columns:
+            continue
         fig.add_trace(go.Scatter(
             x=hist['signal_date'], y=hist[col], name=label, mode='lines+markers',
-            line=dict(color=colors[col_map[col]], width=2), marker=dict(size=6),
+            line=dict(color=colors.get(col_map.get(col, ''), '#888'), width=2), marker=dict(size=6),
         ))
     fig.update_layout(
         height=230, margin=dict(l=10, r=10, t=20, b=10),
@@ -417,8 +465,8 @@ def history_chart(hist: pd.DataFrame) -> go.Figure:
     return fig
 
 def radar_chart(row: pd.Series, name: str) -> go.Figure:
-    labels = [FACTOR_LABELS[c] for c in FACTOR_COLS]
-    vals   = [row[c] for c in FACTOR_COLS]
+    labels = [FACTOR_LABELS[c] for c in FACTOR_COLS if c in row.index]
+    vals   = [row[c] for c in FACTOR_COLS if c in row.index]
     vals_c = vals + [vals[0]]; lbls_c = labels + [labels[0]]
     fig = go.Figure(go.Scatterpolar(
         r=vals_c, theta=lbls_c, fill='toself',
@@ -487,16 +535,18 @@ def make_kospi_chart(kf: pd.DataFrame) -> go.Figure:
     return fig
 
 def make_backtest_chart(bt_df: pd.DataFrame) -> go.Figure:
-    """4개 전략 누적수익률 vs 코스피"""
+    """5개 전략 누적수익률 vs 코스피"""
     if bt_df is None:
         return None
     df = bt_df.copy()
     date_col   = '매수일' if '매수일' in df.columns else 'sig_date'
     kospi_col  = '코스피_수익률(%)' if '코스피_수익률(%)' in df.columns else 'kospi_return'
     strat_map  = {'밸런스형': '밸런스형_수익률(%)', '저평가형': '저평가형_수익률(%)',
-                  '모멘텀형': '모멘텀형_수익률(%)', '국면대응형': '국면대응형_수익률(%)'}
+                  '모멘텀형': '모멘텀형_수익률(%)', '국면대응형': '국면대응형_수익률(%)',
+                  '촉매형': '촉매형_수익률(%)'}
     palette    = {'밸런스형': '#2196F3', '저평가형': '#4CAF50',
-                  '모멘텀형': '#FF5722', '국면대응형': '#9C27B0', '코스피': '#9E9E9E'}
+                  '모멘텀형': '#FF5722', '국면대응형': '#9C27B0',
+                  '촉매형': '#FF9800', '코스피': '#9E9E9E'}
     df[date_col] = pd.to_datetime(df[date_col])
     df = df.sort_values(date_col).reset_index(drop=True)
     fig = go.Figure()
@@ -529,13 +579,13 @@ def score_color(val):
 # ──────────────────────────────────────────
 def render_overview_tab(q_df: pd.DataFrame, name_dict: dict,
                         regime: str, bt_df=None):
-    """4개 전략 상위 종목 한눈에 비교"""
+    """5개 전략 상위 종목 한눈에 비교"""
     advice = REGIME_ADVICE[regime]
     st.caption(f"{REGIME_EMOJI[regime]} **{REGIME_KR[regime]}** — {advice['설명']}")
     st.subheader('전략별 상위 5종목')
-    cols = st.columns(4)
+    cols = st.columns(5)
     ticker_strats: dict = {}
-    for i, strat in enumerate(['밸런스형', '저평가형', '모멘텀형', '국면대응형']):
+    for i, strat in enumerate(['밸런스형', '저평가형', '모멘텀형', '국면대응형', '촉매형']):
         sn_col = f'{strat}_sn'
         is_rec = strat in advice['추천']
         border = advice['border'] if is_rec else '#9E9E9E'
@@ -1134,15 +1184,16 @@ tab_labels = {
     '저평가형':   "💰 저평가형",
     '모멘텀형':   "🚀 모멘텀형",
     '국면대응형': f"🧭 국면대응형  ({REGIME_KR[regime]})",
+    '촉매형':     "⚡ 촉매형",
 }
 tab_overview_label = '📋 전략 비교'
 tab_search_label   = '🔍 종목 검색'
 tab_track_label    = '📈 실거래 추적'
 all_tabs      = st.tabs(list(tab_labels.values()) + [tab_overview_label, tab_search_label, tab_track_label])
-strategy_tabs = all_tabs[:4]
-overview_tab  = all_tabs[4]
-search_tab    = all_tabs[5]
-track_tab     = all_tabs[6]
+strategy_tabs = all_tabs[:5]
+overview_tab  = all_tabs[5]
+search_tab    = all_tabs[6]
+track_tab     = all_tabs[7]
 
 q_label = latest_quarter.strftime('%Y%m')
 for (strat, _), tab in zip(tab_labels.items(), strategy_tabs):

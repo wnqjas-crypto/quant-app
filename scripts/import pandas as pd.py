@@ -175,6 +175,37 @@ fin_df['thstrm_amount'] = pd.to_numeric(
 print(f"✅ 재무 DB 로드 완료: {len(fin_df):,}건")
 
 # ─────────────────────────────────────
+# 종목별 분기 이력 사전 구축 (GARP·촉매 팩터용)
+# ─────────────────────────────────────
+print("\n📊 종목별 분기 이력 구축 중 (GARP·촉매 팩터용)...")
+
+_IS_MASK = fin_df['account_nm'].str.contains('매출|영업이익|당기순이익', na=False, regex=True)
+_is_fin  = fin_df[_IS_MASK][['stock_code', 'quarter_end', 'account_nm', 'thstrm_amount']].copy()
+
+ticker_history: dict = {}
+for (t_code, t_q), grp in _is_fin.groupby(['stock_code', 'quarter_end']):
+    row_d = {'quarter_end': t_q}
+    for _, r in grp.iterrows():
+        nm  = str(r['account_nm'])
+        val = r['thstrm_amount']
+        if pd.isna(val):
+            continue
+        fval = float(val)
+        if '매출' in nm:
+            row_d.setdefault('sales', fval)
+        elif '영업이익' in nm:
+            row_d.setdefault('op_income', fval)
+        elif '당기순이익' in nm:
+            row_d.setdefault('net_income', fval)
+    ticker_history.setdefault(t_code, []).append(row_d)
+
+for t_code in ticker_history:
+    ticker_history[t_code].sort(key=lambda x: x['quarter_end'])
+
+del _IS_MASK, _is_fin
+print(f"✅ {len(ticker_history):,}개 종목 이력 구축 완료")
+
+# ─────────────────────────────────────
 # 가격 DB 로드
 # ─────────────────────────────────────
 print("\n📦 가격 DB 로드 중...")
@@ -767,6 +798,90 @@ for q_idx, q_end in enumerate(quarters):
             )
 
             # ─────────────────────────
+            # GARP + 촉매 팩터
+            # ─────────────────────────
+            garp_score     = 50.0  # 데이터 부족 시 중립값
+            catalyst_score = 50.0
+
+            t_hist     = ticker_history.get(ticker, [])
+            t_hist_q   = [h for h in t_hist if h['quarter_end'] <= q_end]
+
+            if len(t_hist_q) >= 2:
+                curr_h    = t_hist_q[-1]
+                prev_h    = t_hist_q[-2]
+                curr_op   = curr_h.get('op_income',  0) or 0
+                prev_q_op = prev_h.get('op_income',  0) or 0
+                curr_sl   = curr_h.get('sales',       0) or 0
+                prev_q_sl = prev_h.get('sales',       0) or 0
+
+                # ── GARP ────────────────────────────────────────
+                # ① 최근 4분기 영업이익 전부 흑자
+                if len(t_hist_q) >= 4:
+                    _g4 = 1 if all((h.get('op_income', 0) or 0) > 0 for h in t_hist_q[-4:]) else 0
+                else:
+                    _g4 = 1 if curr_op > 0 else 0
+
+                # ② 이익 가속: 현재 YoY > 직전분기 YoY
+                _prev_q_end  = prev_h['quarter_end']
+                _prev_1y_end = (pd.to_datetime(_prev_q_end) - pd.DateOffset(years=1)).strftime('%Y-%m-%d')
+                _prev_1y_lst = [h for h in t_hist if h['quarter_end'] == _prev_1y_end]
+                _g_accel = 0
+                if _prev_1y_lst:
+                    _p1y_op = _prev_1y_lst[0].get('op_income', 0) or 0
+                    if _p1y_op != 0:
+                        _op_yoy_prev = (prev_q_op - _p1y_op) / abs(_p1y_op) * 100
+                        _g_accel = 1 if (op_yoy > 0 and op_yoy > _op_yoy_prev) else 0
+
+                # ③ 매출 YoY 양 (이미 계산된 sales_yoy 활용)
+                _g_rev = 1 if sales_yoy > 0 else 0
+
+                # ④ PEG (per·op_yoy 활용)
+                _g_peg = _g_peg_bonus = 0
+                if per and per > 0 and op_yoy > 0:
+                    _peg = per / op_yoy
+                    _g_peg       = 1 if _peg <= 1.5 else 0
+                    _g_peg_bonus = 1 if _peg <= 1.0 else 0
+
+                # ⑤ ROE 대리: 최근 4Q 순이익 합계 양수
+                if len(t_hist_q) >= 4:
+                    _net4q = sum((h.get('net_income', 0) or 0) for h in t_hist_q[-4:])
+                    _g_roe = 1 if _net4q > 0 else 0
+                else:
+                    _g_roe = 1 if (curr_h.get('net_income', 0) or 0) > 0 else 0
+
+                _raw_garp  = _g4 + _g_accel + _g_rev + _g_peg + _g_peg_bonus + _g_roe
+                garp_score = round(_raw_garp / 6 * 100, 1)
+
+                # ── 촉매 ────────────────────────────────────────
+                # ① 어닝 서프라이즈: 현재 분기 영업이익 > 직전 4분기 평균 +30%
+                _c_surprise = 0
+                if len(t_hist_q) >= 5:
+                    _prior4_ops = [(h.get('op_income', 0) or 0) for h in t_hist_q[-5:-1]]
+                    _avg_prior  = np.mean(_prior4_ops)
+                    if _avg_prior > 0:
+                        _c_surprise = 1 if (curr_op - _avg_prior) / abs(_avg_prior) * 100 >= 30 else 0
+
+                # ② 마진 변곡점: OPM QoQ 개선 + YoY 개선
+                _c_margin = 0
+                if curr_sl > 0 and prev_q_sl > 0:
+                    _curr_opm   = curr_op   / curr_sl
+                    _prev_q_opm = prev_q_op / prev_q_sl
+                    if _curr_opm > _prev_q_opm:
+                        _curr_1y_end = (pd.to_datetime(q_end) - pd.DateOffset(years=1)).strftime('%Y-%m-%d')
+                        _curr_1y_lst = [h for h in t_hist if h['quarter_end'] == _curr_1y_end]
+                        if _curr_1y_lst and (_curr_1y_lst[0].get('sales', 0) or 0) > 0:
+                            _1y_opm = (_curr_1y_lst[0].get('op_income', 0) or 0) / _curr_1y_lst[0]['sales']
+                            _c_margin = 1 if _curr_opm > _1y_opm else 0
+                        else:
+                            _c_margin = 1  # QoQ 개선만으로도 인정
+
+                # ③ 턴어라운드: 직전분기 적자 → 현재 흑자
+                _c_turn = 1 if (prev_q_op < 0 and curr_op > 0) else 0
+
+                _raw_catalyst  = _c_surprise + _c_margin + _c_turn
+                catalyst_score = round(_raw_catalyst / 3 * 100, 1)
+
+            # ─────────────────────────
             # 자본잠식 패널티
             # paid_in_capital 미보유 → 부채비율 400% 초과를 부분잠식 대리지표로 사용
             # ─────────────────────────
@@ -789,6 +904,8 @@ for q_idx, q_end in enumerate(quarters):
                 profitability_score *= _impairment
                 momentum_score      *= _impairment
                 lowvol_score        *= _impairment
+                garp_score          *= _impairment
+                catalyst_score      *= _impairment
 
             # ─────────────────────────
             # 저장
@@ -815,6 +932,8 @@ for q_idx, q_end in enumerate(quarters):
                 'profitability_score': round(profitability_score, 1),
                 'momentum_score':      round(momentum_score, 1),
                 'lowvol_score':        round(lowvol_score, 1),
+                'garp_score':          round(garp_score, 1),
+                'catalyst_score':      round(catalyst_score, 1),
 
                 # ── 원본 수치 (추천 이유 생성용) ────────────
                 'sales_yoy':   _r(sales_yoy),
